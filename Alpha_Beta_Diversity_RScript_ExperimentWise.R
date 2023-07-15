@@ -1,5 +1,3 @@
-#This code in written by Vishnu Prasoodanan P K
-#The input data for this 
 library(tibble)
 library(tidyverse)
 library(plyr)
@@ -11,14 +9,14 @@ library (ggplot2)
 library(vegan)
 
 #--------------------------------------------------------
-Colors <- c("darkolivegreen4", "red") #colors used for different diets
-#Colors <- c("lightblue", "gray") #colors used for gender
+#Colors <- c("darkolivegreen4", "red") #colors used for different diets
+Colors <- c("lightblue", "gray") #colors used for gender
 
-Colors1 <- c("darkolivegreen","red4") #colors used for different diets
-#Colors1 <- c("midnightblue", "darkgray") #colors used for gender
+#Colors1 <- c("darkolivegreen","red4") #colors used for different diets
+Colors1 <- c("midnightblue", "darkgray") #colors used for gender
 #-------------------------------------------------------
 
-otu_table_in <- read.csv("Selected_FeatureTable_rarefied_edited.txt", sep = "\t")
+otu_table_in <- read.csv("selected_feature-table.txt", sep = "\t")
 otu_table_t <- setNames(data.frame(t(otu_table_in[,-1])), otu_table_in[,1])
 otu_table_t <- tibble::rownames_to_column(otu_table_t)
 
@@ -135,16 +133,20 @@ for (level in factor_levels) {
     Bushman2  = transform_sample_counts(ps, function(x) x / sum(x) )
     
     #---------------------- weighted UniFrac PCoA
-    file_name7 <- paste(level, level2, "W-UniFrac_distances.txt", sep = "_")
     UniFrac_distances <- UniFrac(Bushman2, weighted=TRUE)
     UniFrac_distances <- as.matrix(UniFrac_distances)
-    UniFrac_dist_column <- melt(UniFrac_distances)
-    write.table (UniFrac_dist_column, file = file_name7, sep = "\t")
+    UniFrac_distances_final <- melt(UniFrac_distances)
+    names(UniFrac_distances_final) <- c("Sample1", "Sample2", "Distance")
+    unique_UniFrac_distances <- subset(UniFrac_distances_final, !(duplicated(paste(pmin(Sample1, Sample2), pmax(Sample1, Sample2))) & duplicated(Distance)))
+    unique_UniFrac_distances <- unique_UniFrac_distances[unique_UniFrac_distances$Distance != 0, ]
+    file_name7 <- paste(level, level2, "W-UniFrac_distances.txt", sep = "_")
+    write.table (unique_UniFrac_distances, file = file_name7, sep = "\t", row.names = FALSE)
     
     Uni_pcoa <- pcoa(UniFrac_distances)
     Uni_pcoa$values[1:2,]
     mds.var.per = round(Uni_pcoa$values$Eigenvalues/sum(Uni_pcoa$values$Eigenvalues)*100, 1)
     pc <- c(1,2)
+    
     file_name8 <- paste(level, level2, "W-Unifrac_PCOA.jpg", sep = "_")
     jpeg(file_name8, height = 10, width = 10, units = 'in', res = 600)
     plot(Uni_pcoa$vectors[,1:2], bg= c("darkolivegreen","red4")[as.factor(Bushman2@sam_data$diet)], pch=21, cex=2, xlab=paste0("PCoA", pc[1], " (", mds.var.per[1], "%)"), ylab=paste0("PCoA", pc[2], " (", mds.var.per[2], "%)"))
@@ -160,9 +162,13 @@ for (level in factor_levels) {
     
     UWUniFrac_distances <- UniFrac(Bushman2, weighted=FALSE)
     UWUniFrac_distances <- as.matrix(UWUniFrac_distances)
-    UniFrac_dist_column <- melt(UWUniFrac_distances)
+    UWUniFrac_distances_final <- melt(UWUniFrac_distances)
+    names(UWUniFrac_distances_final) <- c("Sample1", "Sample2", "Distance")
+    unique_UWUniFrac_distances <- subset(UWUniFrac_distances_final, !(duplicated(paste(pmin(Sample1, Sample2), pmax(Sample1, Sample2))) & duplicated(Distance)))
+    unique_UWUniFrac_distances <- unique_UWUniFrac_distances[unique_UWUniFrac_distances$Distance != 0, ]
     file_name9 <- paste(level, level2, "unweighted_UWUniFrac_distances.txt", sep = "_")
-    write.table (UniFrac_dist_column, file = file_name9, sep = "\t")
+    write.table (unique_UWUniFrac_distances, file = file_name9, sep = "\t", row.names = FALSE)
+    
     Uni_pcoa <- pcoa(UWUniFrac_distances)
     Uni_pcoa$values[1:2,]
     mds.var.per = round(Uni_pcoa$values$Eigenvalues/sum(Uni_pcoa$values$Eigenvalues)*100, 1)
@@ -182,10 +188,13 @@ for (level in factor_levels) {
     #-------------------------- Bray-Curtis PCoA
     BC_distances <- distance(Bushman2, method="bray")
     BC_distances <- as.matrix(BC_distances)
-    UniFrac_dist_column <- melt(BC_distances)
-    
+    BC_distances_final <- melt(BC_distances)
+    names(BC_distances_final) <- c("Sample1", "Sample2", "Distance")
+    unique_BC_distances_final <- subset(BC_distances_final, !(duplicated(paste(pmin(Sample1, Sample2), pmax(Sample1, Sample2))) & duplicated(Distance)))
+    unique_BC_distances_final <- unique_BC_distances_final[unique_BC_distances_final$Distance != 0, ]
     file_name11 <- paste(level, level2, "BC_distances.txt", sep = "_")
-    write.table (UniFrac_dist_column, file = file_name11, sep = "\t")
+    write.table (BC_distances_final, file = file_name11, sep = "\t", row.names = FALSE)
+    
     Uni_pcoa <- pcoa(BC_distances)
     Uni_pcoa$values[1:2,]
     mds.var.per = round(Uni_pcoa$values$Eigenvalues/sum(Uni_pcoa$values$Eigenvalues)*100, 1)
