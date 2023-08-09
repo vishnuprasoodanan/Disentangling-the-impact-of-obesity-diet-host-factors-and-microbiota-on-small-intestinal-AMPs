@@ -155,18 +155,4 @@ erich <- estimate_richness(ps, measures = c("Observed", "Chao1", "Shannon"))
 erich_all <- cbind(erich, metadata)
 write.table (erich_all, file = "Richness_total.txt", sep = "\t")
 
-adonis_results <- data.frame()
-elements_to_remove <- c("mouse.number", "sample")
-covar_upd <- covar[!(covar %in% elements_to_remove)]
-for (i in 1:length(covar_upd)) {
-  element <- covar_upd[i]
-  out <- as.data.frame(adonis2(UniFrac_distances ~ Bushman2@sam_data[[element]]))
-  out1 <- bind_cols(out, status = element)
-  adonis_results <- bind_rows(out1, adonis_results)
-}
-# Print the combined data frame
-print(adonis_results)
-
-# Write the combined data frame to a text file
-write.table(adonis_results, file = "adonis_results.txt", sep = "\t", row.names = FALSE, append = FALSE)
 
