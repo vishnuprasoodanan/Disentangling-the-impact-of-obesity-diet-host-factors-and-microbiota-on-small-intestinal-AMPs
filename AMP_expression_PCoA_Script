@@ -1,0 +1,69 @@
+#------------- Bray-Curtis distance PCoA: using AMP expression data
+
+KO <- read.table(file = "AMP_expression_numeric.txt", sep = '\t', colClasses = "numeric") # data without row and column names
+
+KO_test <- read.table(file = "AMP_expression_All_data.txt", sep = '\t', header = TRUE, row.names = 1)
+
+KO_test_T <- as.data.frame(t(KO_test))
+KO_test_1 <- as.data.frame(KO_test_T[5:12])
+rownames(KO) <- colnames(KO_test_1)
+colnames(KO) <- row.names(KO_test_1)
+
+KO_proportions <- KO/colSums(KO)[col(KO)]
+KO_proportions1 <- as.data.frame(t(KO_proportions))
+
+covar <- as.vector(colnames(KO_test_T[1:4]))
+# Elements to remove
+elements_to_remove <- c("mouse.number", "sample")
+adonis_results <- data.frame()
+# Remove specific elements
+covar_upd <- covar[!(covar %in% elements_to_remove)]
+for (i in 1:length(covar_upd)) {
+  element <- covar_upd[i]
+  if (element == "diet") {
+    Colors <- c("darkolivegreen4", "red", "orange")
+    Colors1 <- c("darkolivegreen","red4", "orangered")
+  } else if (element == "experiment"){
+    Colors <- c("mediumpurple3", "snow4", "aquamarine")
+    Colors1 <- c("violet", "gray30", "deepskyblue")
+  }else if (element == "Mouse_provider"){
+    Colors <- c("goldenrod1", "salmon4")
+    Colors1 <- c("goldenrod4", "salmon")
+  }else if (element == "sex"){
+    Colors <- c("lightblue", "gray")
+    Colors1 <- c("midnightblue", "darkgray")
+  }
+  class <- KO_test_T[[element]]
+  Bray_pcoa <-pcoa(vegdist(KO_proportions1, "bray"))
+  Bray_pcoa$values[1:2,]
+  mds.var.per = round(Bray_pcoa$values$Eigenvalues/sum(Bray_pcoa$values$Eigenvalues)*100, 1)
+  Bray_PCoA_MATRIX <- Bray_pcoa$vectors[,1:2]
+  Bray_PCoA_MATRIX <- as.data.frame(Bray_PCoA_MATRIX)
+
+  Bray_distances <-vegdist(KO_proportions1, "bray")
+  adonis2(Bray_distances ~ as.factor(KO_test_T[[element]]))
+  write.table(as.matrix(Bray_distances), file = "Bray_Curtis_Distance.txt", quote = FALSE, sep = '\t')
+
+  Bray_PCoA_MATRIX_New <- cbind(Bray_PCoA_MATRIX, class)
+  write.table(Bray_PCoA_MATRIX_New, file = "PCA_data_proportions.txt", quote = FALSE, sep = '\t')
+  BC_adonis_results <- data.frame()
+  out <- as.data.frame(adonis2(Bray_distances ~ as.factor(KO_test_T[[element]])))
+  out1 <- bind_cols(out, status = element)
+  out1 <- bind_cols(out1, Dist = "BC")
+  BC_adonis_results  <- bind_rows(out1, BC_adonis_results)
+  adonis_results <- bind_rows(adonis_results, BC_adonis_results)
+  # Print the combined data frame
+  print(BC_adonis_results )
+  pc <- c(1,2)
+  file_name1 <- paste(element, "Bray-Curtis.jpg", sep = "_")
+  jpeg(file_name1, height = 10, width = 10, units = 'in', res = 600)
+
+  plot(Bray_pcoa$vectors[,1:2], bg=Colors[as.factor(Bray_PCoA_MATRIX_New$class)], pch=21, cex=2, xlab=paste0("PCoA", pc[1], " (", mds.var.per[1], "%)"), ylab=paste0("PCoA", pc[2], " (", mds.var.per[2], "%)"))
+  ordiellipse(Bray_pcoa$vectors[,1:2], Bray_PCoA_MATRIX_New$class, kind="sd", lwd=1, lty=3, draw = "polygon", alpha = 70, col = Colors)
+  #ordispider(Bray_pcoa$vectors[,1:2], Bray_PCoA_MATRIX_New$class, lty=3, spider ="centroid", lwd=1, col="black")
+  legend("topright", legend = sort(unique(Bray_PCoA_MATRIX_New$class)), col = Colors,lty = c(1,1,1,1), cex=0.7, title = "", border = "white", fill = NULL, bg="white", bty = "n")
+  text(Bray_pcoa$vectors[,1:2], labels=as.factor(rownames(KO_proportions1)), cex=0.6, font=1, pos=1)
+  #abline(h=0, v=0, col = "gray60")
+  dev.off ()
+}
+write.table (adonis_results, file = "Adonis_Test_Results.txt", sep = "\t", col.names = NA, row.names = TRUE)
