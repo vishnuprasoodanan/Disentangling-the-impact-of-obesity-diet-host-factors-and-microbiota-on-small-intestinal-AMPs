@@ -9,11 +9,11 @@ library (ggplot2)
 library(vegan)
 
 #--------------------------------------------------------
-#Colors <- c("darkolivegreen4", "red") #colors used for different diets
-Colors <- c("lightblue", "gray") #colors used for gender
+Colors <- c("darkolivegreen4", "red") #colors used for different diets
+#Colors <- c("lightblue", "gray") #colors used for gender
 
-#Colors1 <- c("darkolivegreen","red4") #colors used for different diets
-Colors1 <- c("midnightblue", "darkgray") #colors used for gender
+Colors1 <- c("darkolivegreen","red4") #colors used for different diets
+#Colors1 <- c("midnightblue", "darkgray") #colors used for gender
 #-------------------------------------------------------
 
 otu_table_in <- read.csv("selected_feature-table.txt", sep = "\t")
@@ -25,7 +25,7 @@ names(otu_table_t)[names(otu_table_t) == "rowname"] <- "SampleID"
 otu_table_t$SampleID <- gsub('^[X]', '', otu_table_t$SampleID) 
 otu_table_t$SampleID <- gsub('[.]', '-', otu_table_t$SampleID)
 
-metadata_all <- read.table("selected_Metadata.tsv", sep="\t", row.names = 1, header=T)
+metadata_all <- read.table("Metadata_corrected_analysis.txt", sep="\t", row.names = 1, header=T)
 metadata_all <- tibble::rownames_to_column(metadata_all)
 names(metadata_all)[names(metadata_all) == "rowname"] <- "SampleID"
 
@@ -88,7 +88,8 @@ for (level in factor_levels) {
     metadata <- gut_Metadata
     row.names(metadata) <- metadata$SampleID
     metadata <- metadata[, -1]
-    taxonomy <- read.csv("taxonomy.tsv", sep = "\t", row.names = 1)
+    taxonomy_all <- read.csv("selected_taxonomy.tsv", sep = "\t", row.names = 1)
+    taxonomy <- taxonomy_all[rownames(taxonomy_all)  %in% gsub('^[X]', '', row.names(otu_table_final)), ]
     taxonomy <- as.matrix(taxonomy)
     # Read in metadata
     # Read in tree
@@ -103,7 +104,8 @@ for (level in factor_levels) {
     head(taxa_names(phy_tree))
     # Same sample names
     sample_names(OTU) <- gsub('[.]', '-', sample_names(OTU))
-    sample_names(OTU) <- gsub('^[X]', '', sample_names(OTU)) 
+    sample_names(OTU) <- gsub('^[X]', '', sample_names(OTU))
+    taxa_names(OTU) <- gsub('^[X]', '', taxa_names(OTU))
     head(sample_names(OTU))
     head(sample_names(META))
     file_name5 <- paste(level, level2, "_alpha_diversity_estimates_diet.pdf", sep = "_")
@@ -115,7 +117,7 @@ for (level in factor_levels) {
     #raremax <- min(rowSums(mat))
     #system.time(rarecurve(mat, step = 100, sample = raremax, col = "blue", label = TRUE ))
     #ps <- rarefy_even_depth(ps, sample.size = min(sample_sums(ps)), rngseed = 711)
-
+    
     p <- plot_richness(ps, "diet", measures = c("Observed", "Chao1", "Shannon"), color = NULL, shape = NULL)
     p <- p + geom_boxplot(data = p$data, aes(x= diet, y = value, fill = diet)) + 
       labs(x="",y="Alpha Diversity Measure") + 
@@ -210,6 +212,6 @@ for (level in factor_levels) {
     abline(h=0, v=0, col = "gray60")
     dev.off ()
     adonis2(BC_distances ~ Bushman2@sam_data$diet)
-    
+    rm(ps)
   }
 }
