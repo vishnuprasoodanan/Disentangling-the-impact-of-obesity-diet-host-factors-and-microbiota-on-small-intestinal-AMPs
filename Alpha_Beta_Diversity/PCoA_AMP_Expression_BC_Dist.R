@@ -1,18 +1,27 @@
 #------------- Bray-Curtis distance PCoA: using AMP expression
 
-KO <- read.table(file = "AMP_expression_numeric.txt", sep = '\t', colClasses = "numeric") # data without row and column names
+KO <- read.table(file = "AMP_exp_numeric_data.txt", sep = '\t', colClasses = "numeric") # data without row and column names
 
-KO_test <- read.table(file = "AMP_expression_All_data.txt", sep = '\t', header = TRUE, row.names = 1)
+KO_test <- read.table(file = "AMP_exp_data.txt", sep = '\t', header = TRUE, row.names = 1)
 
 KO_test_T <- as.data.frame(t(KO_test))
-KO_test_1 <- as.data.frame(KO_test_T[5:12])
+KO_test_1 <- as.data.frame(KO_test_T[6:11])
 rownames(KO) <- colnames(KO_test_1)
 colnames(KO) <- row.names(KO_test_1)
 
 KO_proportions <- KO/colSums(KO)[col(KO)]
 KO_proportions1 <- as.data.frame(t(KO_proportions))
 
-covar <- as.vector(colnames(KO_test_T[1:4]))
+# use these lines only when you need to plot the PCoA from raw data without calculating relative abundance
+#-------------------------------------------------
+# df_numeric <- KO_test_1
+# for (i in 1:ncol(KO_test_1)) {
+#   df_numeric[, i] <- as.numeric(KO_test_1[, i])
+# }
+#KO_proportions1 <- df_numeric
+#-------------------------------------------------
+
+covar <- as.vector(colnames(KO_test_T[1:5]))
 # Elements to remove
 elements_to_remove <- c("mouse.number", "sample")
 adonis_results <- data.frame()
@@ -39,11 +48,11 @@ for (i in 1:length(covar_upd)) {
   mds.var.per = round(Bray_pcoa$values$Eigenvalues/sum(Bray_pcoa$values$Eigenvalues)*100, 1)
   Bray_PCoA_MATRIX <- Bray_pcoa$vectors[,1:2]
   Bray_PCoA_MATRIX <- as.data.frame(Bray_PCoA_MATRIX)
-
+  
   Bray_distances <-vegdist(KO_proportions1, "bray")
   adonis2(Bray_distances ~ as.factor(KO_test_T[[element]]))
   write.table(as.matrix(Bray_distances), file = "Bray_Curtis_Distance.txt", quote = FALSE, sep = '\t')
-
+  
   Bray_PCoA_MATRIX_New <- cbind(Bray_PCoA_MATRIX, class)
   write.table(Bray_PCoA_MATRIX_New, file = "PCA_data_proportions.txt", quote = FALSE, sep = '\t')
   BC_adonis_results <- data.frame()
@@ -57,7 +66,7 @@ for (i in 1:length(covar_upd)) {
   pc <- c(1,2)
   file_name1 <- paste(element, "Bray-Curtis.jpg", sep = "_")
   jpeg(file_name1, height = 10, width = 10, units = 'in', res = 600)
-
+  
   plot(Bray_pcoa$vectors[,1:2], bg=Colors[as.factor(Bray_PCoA_MATRIX_New$class)], pch=21, cex=2, xlab=paste0("PCoA", pc[1], " (", mds.var.per[1], "%)"), ylab=paste0("PCoA", pc[2], " (", mds.var.per[2], "%)"))
   ordiellipse(Bray_pcoa$vectors[,1:2], Bray_PCoA_MATRIX_New$class, kind="sd", lwd=1, lty=3, draw = "polygon", alpha = 70, col = Colors)
   #ordispider(Bray_pcoa$vectors[,1:2], Bray_PCoA_MATRIX_New$class, lty=3, spider ="centroid", lwd=1, col="black")
