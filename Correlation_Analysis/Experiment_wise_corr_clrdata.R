@@ -8,8 +8,11 @@ library(phyloseq)
 library(ape)
 library(ggplot2)
 library(vegan)
-
-#-------------
+library(NMF)
+library(RColorBrewer)
+#------------------------------------------------------------------------------------------------------------------
+# Load Functions
+#Function-1------------------------------------------------------------------------------------------------------------------
 clean_names <- function(data) {
   names(data) <- gsub("^X", "", names(data))
   names(data) <- gsub("\\.", "-", names(data))
@@ -21,8 +24,52 @@ clean_names <- function(data) {
   }
   return(data)
 }
-#---------------
-
+#Function-2-------------------------------------------------------------------------------------------------------------------
+generate_heatmap <- function(result_matrix, filename) {
+  library(NMF)
+  aheatmap(result_matrix, color = "-BrBG:50", breaks = 0, cellwidth = 10, cellheight = 10, border_color = "white",
+           main = "Taxa-AMP expression",
+           distfun = "spearman",
+           hclustfun = "complete",
+           fontsize = 10,
+           filename = filename)
+}
+#Function-3-------------------------------------------------------------------------------------------------------------------
+write_significant_results <- function(P_value_all, R_value_all, P_adj_all, file_conn) {
+  for (i in 1:nrow(P_value_all)) {
+    for (j in 1:ncol(P_value_all)) {
+      if (P_value_all[i, j] < 0.01) {
+        cat(row.names(P_value_all)[i], "\t", colnames(P_value_all)[j], "\t", 
+            R_value_all[row.names(P_value_all)[i], colnames(P_value_all)[j]], "\t", 
+            P_value_all[row.names(P_value_all)[i], colnames(P_value_all)[j]], "\t", 
+            P_adj_all[row.names(P_value_all)[i], colnames(P_value_all)[j]], "\n", 
+            file = file_conn)
+      }
+    }
+  }
+}
+#Function-4---------------------------------------------------------------------------------------------------------------------
+clr-transform <- function(counts, samples, tax) {
+  library(SummarizedExperiment)
+  
+  # Create SummarizedExperiment object
+  se <- SummarizedExperiment(assays = list(counts = counts),
+                             colData = samples,
+                             rowData = tax)
+  
+  # Convert to TreeSummarizedExperiment
+  tse <- as(se, "TreeSummarizedExperiment")
+  
+  # Transform assay to clr
+  tse <- transformAssay(se, method = "clr", pseudocount = 1)
+  
+  # Extract clr assay values
+  clr_assay <- assays(tse)$clr
+  clr_values <- as.data.frame(t(clr_assay))
+  
+  return(clr_values)
+}
+#----------------------------------------------------------------------------------------------------------------------
 otu_table_in <- read.csv("feature-table.txt", sep = "\t")
 otu_table_t <- setNames(data.frame(t(otu_table_in[,-1])), otu_table_in[,1])
 otu_table_t <- tibble::rownames_to_column(otu_table_t)
@@ -144,15 +191,8 @@ for (level in factor_levels) {
     counts[, -1] <- apply(counts[, -1], 2, function(x) as.numeric(x))
     #counts <- apply(counts, 2, function(x) as.numeric(x))
     counts <- as.matrix(counts)  
-    se <- SummarizedExperiment(assays = list(counts = counts),
-                               colData = samples,
-                               rowData = tax)
-    tse <- as(se, "TreeSummarizedExperiment")
-    tse <- transformAssay(se, method = "clr", pseudocount = 1)
-    clr_assay <- assays(tse)$clr
-    #clr_assay <- t(clr_assay)
-    clr_values <- as.data.frame(t(clr_assay))
-    
+    #clr-transformation
+    clr_values <- clr-transformation(counts, samples, tax)
     # Find common row names
     common_rows_final <- intersect(rownames(clr_values), rownames(amp_exp_df_rl))
     
@@ -182,11 +222,12 @@ for (level in factor_levels) {
     #subset_clr_values <- as.matrix(clr_values[common_rows_final, , drop = FALSE])
     subset_amp_exp_df_rl <- as.matrix(amp_exp_df_rl[common_rows_final, , drop = FALSE])
     
-    
+    #---------------- evaluate correlation
     out <- corr.test(subset_amp_exp_df_rl, subset_clr_values, use = "pairwise",method="spearman",adjust="BH", alpha=.05,ci=TRUE,minlength=5,normal=TRUE)
     R_value_all <- out$r
     P_value_all <- out$p
     P_adj_all <- out$p.adj
+    #---------------- Write Correlation matrices in text files
     file_name5 <- paste(level, level2, "_Genera_AMP_Corr.txt", sep = "_")
     write.table(R_value_all, file= file_name5, sep='\t', quote=F)
     
@@ -195,29 +236,14 @@ for (level in factor_levels) {
     
     file_name7 <- paste(level, level2, "_Genera_AMP_AdjPval.txt", sep = "_")
     write.table(P_adj_all, file= file_name7, sep='\t', quote=F)
-    # Iterate through rows and columns to find values less than 0.01
+    #----------------- Iterate through rows and columns to find values less than 0.01
     file_conn <- file(paste(level, level2, "_Genera_AMP_signif_corr.txt", sep = "_"), "w")
-    
-    for (i in 1:nrow(P_value_all)) {
-      for (j in 1:ncol(P_value_all)) {
-        if (P_value_all[i, j] < 0.01) {
-          out = cat(row.names(P_value_all)[i], "\t", colnames(P_value_all)[j], "\t", R_value_all[row.names(P_value_all)[i], colnames(P_value_all)[j]],"\t", P_value_all[row.names(P_value_all)[i], colnames(P_value_all)[j]], "\t", P_adj_all[row.names(P_value_all)[i], colnames(P_value_all)[j]],"\n", file = file_conn)
-        }
-      }
-    }
+    write_significant_results(P_value_all, R_value_all, P_adj_all, file_conn)
     close(file_conn)
-    
     #----------------- Heat-map using correlation values
-    library(dplyr)
-    library(NMF)
-    library(RColorBrewer)
     result_matrix <- R_value_all
-    aheatmap(result_matrix, color = "-BrBG:50", breaks = 0, cellwidth = 10, cellheight =10, border_color = "white",
-             main = "Taxa-AMP expression",
-             distfun = "spearman",
-             hclustfun = "complete",
-             fontsize=10,
-             filename=paste(level, level2, "_Taxa_AMP_expression_heatmap_spearman.pdf", sep = "_"))
+    file_name8 <- paste(level, level2, "_Taxa_AMP_expression_heatmap_spearman.pdf", sep = "_")
+    generate_heatmap(result_matrix, file_name8)
 
   }
 }
