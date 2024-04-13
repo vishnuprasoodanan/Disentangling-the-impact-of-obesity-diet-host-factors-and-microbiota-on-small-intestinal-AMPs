@@ -1,4 +1,5 @@
 # correlation between clr-genus abundance and amp expression
+# edit variable named 'factor_column' as "diet" or "experiment"
 library(tibble)
 library(tidyverse)
 library(plyr)
@@ -10,6 +11,8 @@ library(ggplot2)
 library(vegan)
 library(NMF)
 library(RColorBrewer)
+library(SummarizedExperiment)
+library(TreeSummarizedExperiment)
 #------------------------------------------------------------------------------------------------------------------
 # Load Functions
 #Function-1------------------------------------------------------------------------------------------------------------------
@@ -26,7 +29,6 @@ clean_names <- function(data) {
 }
 #Function-2-------------------------------------------------------------------------------------------------------------------
 generate_heatmap <- function(result_matrix, filename) {
-  library(NMF)
   aheatmap(result_matrix, color = "-BrBG:50", breaks = 0, cellwidth = 10, cellheight = 10, border_color = "white",
            main = "Taxa-AMP expression",
            distfun = "spearman",
@@ -48,27 +50,14 @@ write_significant_results <- function(P_value_all, R_value_all, P_adj_all, file_
     }
   }
 }
-#Function-4---------------------------------------------------------------------------------------------------------------------
-clr-transform <- function(counts, samples, tax) {
-  library(SummarizedExperiment)
-  
-  # Create SummarizedExperiment object
-  se <- SummarizedExperiment(assays = list(counts = counts),
-                             colData = samples,
-                             rowData = tax)
-  
-  # Convert to TreeSummarizedExperiment
-  tse <- as(se, "TreeSummarizedExperiment")
-  
-  # Transform assay to clr
-  tse <- transformAssay(se, method = "clr", pseudocount = 1)
-  
-  # Extract clr assay values
-  clr_assay <- assays(tse)$clr
-  clr_values <- as.data.frame(t(clr_assay))
-  
-  return(clr_values)
+#Function-5------------------------------------------------------------------------------------------------------------
+rel_abundance <- function(data) {
+  amp_exp_df_relative <- apply(data, 1, function(x) x/sum(x))
+  amp_exp_df_rl <- as.matrix(t(amp_exp_df_relative))
+  return(amp_exp_df_rl)
 }
+#----------------------------------------------------------------------------------------------------------------------
+#code starts here
 #----------------------------------------------------------------------------------------------------------------------
 otu_table_in <- read.csv("feature-table.txt", sep = "\t")
 otu_table_t <- setNames(data.frame(t(otu_table_in[,-1])), otu_table_in[,1])
@@ -101,13 +90,12 @@ metadata_all$SampleID <- gsub("-content", "-C", metadata_all$SampleID)
 amp_exp <- read.table(file="AMP_exp_data.txt", sep = "\t", header = T, row.names = 1)
 amp_exp_df <- as.data.frame(t(amp_exp)) 
 
-amp_exp_df <- clean_names(amp_exp_df)
+amp_exp_df <- as.data.frame(t(clean_names(amp_exp_df)))
+# Replace '-MAB' with '-C' in the row names
+rownames(amp_exp_df) <- gsub("-MAB", "-C", rownames(amp_exp_df))
 
 # calculate the relative abundance
-amp_exp_df <- as.data.frame(t(amp_exp_df))
-amp_exp_df_relative <- apply(amp_exp_df, 1, function(x) x/sum(x))
-
-amp_exp_df_rl <- as.matrix(t(amp_exp_df_relative))
+amp_exp_df_rl <- rel_abundance(amp_exp_df)
 # Replace '-MAB' with '-C' in the row names
 rownames(amp_exp_df_rl) <- gsub("-MAB", "-C", rownames(amp_exp_df_rl))
 #---------------------------------------------------------------------------------------------------
@@ -115,10 +103,10 @@ merge_otu_table_t <- merge(otu_table_t, metadata_all, by.x = "SampleID")
 merge_otu_table_t$experiment <- as.factor(merge_otu_table_t$experiment)
 merge_otu_table_t$source <- as.factor(merge_otu_table_t$source)
 # Get the factor column name
-factor_column <- "experiment"
+factor_column <- "diet"
 
 # Iterate through each factor variable
-factor_levels <- levels(merge_otu_table_t[[factor_column]])
+factor_levels <- levels(as.factor(merge_otu_table_t[[factor_column]]))
 for (level in factor_levels) {
   # Filter the data frame for the current factor level
   Si8_FP001 <- merge_otu_table_t[merge_otu_table_t[[factor_column]] == level, ]
@@ -192,7 +180,21 @@ for (level in factor_levels) {
     #counts <- apply(counts, 2, function(x) as.numeric(x))
     counts <- as.matrix(counts)  
     #clr-transformation
-    clr_values <- clr-transformation(counts, samples, tax)
+    se <- SummarizedExperiment(assays = list(counts = counts),
+                               colData = samples,
+                               rowData = tax)
+    
+    # Convert to TreeSummarizedExperiment
+    tse <- as(se, "TreeSummarizedExperiment")
+    
+    # Transform assay to clr
+    tse <- transformAssay(tse, method = "clr", pseudocount = 1)
+    
+    # Extract clr assay values
+    clr_assay <- assays(tse)$clr
+    #clr_assay <- assays(tse)[[1]]
+    clr_values <- as.data.frame(t(clr_assay))
+    
     # Find common row names
     common_rows_final <- intersect(rownames(clr_values), rownames(amp_exp_df_rl))
     
@@ -221,29 +223,53 @@ for (level in factor_levels) {
     subset_clr_values <- as.matrix(t(merged_df_check))
     #subset_clr_values <- as.matrix(clr_values[common_rows_final, , drop = FALSE])
     subset_amp_exp_df_rl <- as.matrix(amp_exp_df_rl[common_rows_final, , drop = FALSE])
-    
-    #---------------- evaluate correlation
-    out <- corr.test(subset_amp_exp_df_rl, subset_clr_values, use = "pairwise",method="spearman",adjust="BH", alpha=.05,ci=TRUE,minlength=5,normal=TRUE)
+    amp_exp_df_raw <- as.matrix(amp_exp_df[common_rows_final, , drop = FALSE])
+    #---------------- evaluate correlation using relative expression of AMP
+    out <- corr.test(amp_exp_df_raw, subset_clr_values, use = "pairwise",method="spearman",adjust="BH", alpha=.05,ci=TRUE,minlength=5,normal=TRUE)
     R_value_all <- out$r
     P_value_all <- out$p
     P_adj_all <- out$p.adj
-    #---------------- Write Correlation matrices in text files
-    file_name5 <- paste(level, level2, "_Genera_AMP_Corr.txt", sep = "_")
+    #---------------- evaluate correlation using raw expression of AMP
+    out_raw <- corr.test(subset_amp_exp_df_rl, subset_clr_values, use = "pairwise",method="spearman",adjust="BH", alpha=.05,ci=TRUE,minlength=5,normal=TRUE)
+    raw_R_value_all <- out_raw$r
+    raw_P_value_all <- out_raw$p
+    raw_P_adj_all <- out_raw$p.adj
+    #---------------- Write Correlation matrices (using rel. expression) in text files 
+    file_name5 <- paste(level, level2, "_Genera_REL_AMP_Corr.txt", sep = "_")
     write.table(R_value_all, file= file_name5, sep='\t', quote=F)
     
-    file_name6 <- paste(level, level2, "_Genera_AMP_Pval.txt", sep = "_")
+    file_name6 <- paste(level, level2, "_Genera_REL_AMP_Pval.txt", sep = "_")
     write.table(P_value_all, file= file_name6, sep='\t', quote=F)
     
-    file_name7 <- paste(level, level2, "_Genera_AMP_AdjPval.txt", sep = "_")
+    file_name7 <- paste(level, level2, "_Genera_REL_AMP_AdjPval.txt", sep = "_")
     write.table(P_adj_all, file= file_name7, sep='\t', quote=F)
+    
+    #---------------- Write Correlation matrices (using raw expression) in text files 
+    file_name8 <- paste(level, level2, "_Genera_RAW_AMP_Corr.txt", sep = "_")
+    write.table(raw_R_value_all, file= file_name5, sep='\t', quote=F)
+    
+    file_name9 <- paste(level, level2, "_Genera_RAW_AMP_Pval.txt", sep = "_")
+    write.table(raw_P_value_all, file= file_name6, sep='\t', quote=F)
+    
+    file_name10 <- paste(level, level2, "_Genera_RAW_AMP_AdjPval.txt", sep = "_")
+    write.table(raw_P_adj_all, file= file_name7, sep='\t', quote=F)
+    
     #----------------- Iterate through rows and columns to find values less than 0.01
-    file_conn <- file(paste(level, level2, "_Genera_AMP_signif_corr.txt", sep = "_"), "w")
+    file_conn <- file(paste(level, level2, "_Genera_REL_AMP_signif_corr.txt", sep = "_"), "w")
     write_significant_results(P_value_all, R_value_all, P_adj_all, file_conn)
     close(file_conn)
+    #----------------- Iterate through rows and columns to find values less than 0.01
+    file_conn1 <- file(paste(level, level2, "_Genera_RAW_AMP_signif_corr.txt", sep = "_"), "w")
+    write_significant_results(raw_P_value_all, raw_R_value_all, raw_P_adj_all, file_conn)
+    close(file_conn1)
     #----------------- Heat-map using correlation values
     result_matrix <- R_value_all
-    file_name8 <- paste(level, level2, "_Taxa_AMP_expression_heatmap_spearman.pdf", sep = "_")
-    generate_heatmap(result_matrix, file_name8)
+    file_name11 <- paste(level, level2, "_Taxa_REL_AMP_expression_heatmap_spearman.pdf", sep = "_")
+    generate_heatmap(result_matrix, file_name11)
+    
+    result_matrix1 <- raw_R_value_all
+    file_name12 <- paste(level, level2, "_Taxa_RAW_AMP_expression_heatmap_spearman.pdf", sep = "_")
+    generate_heatmap(result_matrix1, file_name12)
 
   }
 }
