@@ -13,6 +13,9 @@ library(NMF)
 library(RColorBrewer)
 library(SummarizedExperiment)
 library(TreeSummarizedExperiment)
+library(mia)
+library(psych)
+library(ggpubr)
 #------------------------------------------------------------------------------------------------------------------
 # Load Functions
 #Function-1------------------------------------------------------------------------------------------------------------------
@@ -55,6 +58,49 @@ rel_abundance <- function(data) {
   amp_exp_df_relative <- apply(data, 1, function(x) x/sum(x))
   amp_exp_df_rl <- as.matrix(t(amp_exp_df_relative))
   return(amp_exp_df_rl)
+}
+#Function-6------------------------------------------------------------------------------------------------------------
+generate_scatter_plots <- function(subset_amp_exp_df_rl, subset_clr_values, file_name13) {
+  pdf(file_name13)
+  par(mfrow = c(3, 3))
+  
+  for (col_name_df1 in colnames(subset_amp_exp_df_rl)) {
+    # Extract the column from df1
+    col_df1 <- subset_amp_exp_df_rl[, col_name_df1]
+    
+    # Create a new dataframe with the column values and row names from df1
+    new_df1 <- data.frame(col_df1, row.names = rownames(subset_amp_exp_df_rl))
+    colnames(new_df1) <- col_name_df1
+    
+    # Loop through the columns of df2
+    for (col_name_df2 in colnames(subset_clr_values)) {
+      # Extract the column from df2
+      col_df2 <- subset_clr_values[, col_name_df2]
+      
+      # Create a new dataframe with the column values and row names from df2
+      new_df2 <- data.frame(col_df2, row.names = rownames(subset_clr_values))
+      colnames(new_df2) <- col_name_df2
+      
+      # Merge new_df1 and new_df2
+      merged_lm_df <- cbind(new_df1, new_df2)
+      corr_results <- corr.test(merged_lm_df[,1], merged_lm_df[,2], use = "pairwise", method = "spearman", adjust = "BH", alpha = .05, ci = TRUE, minlength = 5, normal = TRUE)
+      corr_val <- round(corr_results$r, 3)
+      corr_p_val <- round(corr_results$p, 3)
+      #y_title <- split_into_n_lines(colnames(merged_lm_df)[2], 3, 70)
+      p <- ggplot(merged_lm_df, aes(x = merged_lm_df[,1], y = merged_lm_df[,2])) + 
+        geom_point(colour = 'red', size = 4) +
+        geom_smooth(method = lm) + 
+        labs(x = colnames(merged_lm_df)[1], y =colnames(merged_lm_df)[2]) + 
+        annotate("text", x = Inf, y = max(merged_lm_df[,2]), hjust = 1, vjust = 0, size = 4, 
+                 label = paste("cor-value = ", corr_val, ", p-value = ", corr_p_val)) +
+        theme_minimal() + 
+        theme(axis.text = element_text(size = 8), axis.title = element_text(size = 8, face = "bold"))
+      
+      print(p)
+    }
+  }
+  
+  dev.off()
 }
 #----------------------------------------------------------------------------------------------------------------------
 #code starts here
@@ -103,7 +149,7 @@ merge_otu_table_t <- merge(otu_table_t, metadata_all, by.x = "SampleID")
 merge_otu_table_t$experiment <- as.factor(merge_otu_table_t$experiment)
 merge_otu_table_t$source <- as.factor(merge_otu_table_t$source)
 # Get the factor column name
-factor_column <- "diet"
+factor_column <- "experiment"
 
 # Iterate through each factor variable
 factor_levels <- levels(as.factor(merge_otu_table_t[[factor_column]]))
@@ -207,7 +253,7 @@ for (level in factor_levels) {
     # Merge the dataframes based on row names
     merged_df_check <- merge(subset_clr_values_check, taxonomy_check, by = "row.names", all = TRUE)
     
-    # Rename the first column to "Row.names" (optional)
+    # Rename the first column to "Row.names"
     colnames(merged_df_check)[1] <- "Row.names"
     # Remove the redundant column containing row names
     merged_df_check <- merged_df_check[, -1]
@@ -224,6 +270,12 @@ for (level in factor_levels) {
     #subset_clr_values <- as.matrix(clr_values[common_rows_final, , drop = FALSE])
     subset_amp_exp_df_rl <- as.matrix(amp_exp_df_rl[common_rows_final, , drop = FALSE])
     amp_exp_df_raw <- as.matrix(amp_exp_df[common_rows_final, , drop = FALSE])
+    
+    file_name13 <- paste(level, level2, "_relAMP_scatterplot.pdf", sep = "_")
+    file_name14 <- paste(level, level2, "_rawAMP_scatterplot.pdf", sep = "_")
+    generate_scatter_plots(subset_amp_exp_df_rl, subset_clr_values, file_name13)
+    generate_scatter_plots(amp_exp_df_raw, subset_clr_values, file_name14)
+    #ggsave(file_name13, p, width = 20, height = 10, limitsize = FALSE)
     #---------------- evaluate correlation using relative expression of AMP
     out <- corr.test(amp_exp_df_raw, subset_clr_values, use = "pairwise",method="spearman",adjust="BH", alpha=.05,ci=TRUE,minlength=5,normal=TRUE)
     R_value_all <- out$r
