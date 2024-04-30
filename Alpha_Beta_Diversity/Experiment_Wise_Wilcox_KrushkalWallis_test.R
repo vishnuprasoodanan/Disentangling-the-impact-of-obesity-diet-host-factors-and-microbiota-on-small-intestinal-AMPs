@@ -17,7 +17,7 @@ names(otu_table_t)[names(otu_table_t) == "rowname"] <- "SampleID"
 otu_table_t$SampleID <- gsub('^[X]', '', otu_table_t$SampleID) 
 otu_table_t$SampleID <- gsub('[.]', '-', otu_table_t$SampleID)
 
-metadata_all <- read.table("selected_Metadata.tsv", sep="\t", row.names = 1, header=T)
+metadata_all <- read.table("Metadata_corrected_analysis.txt", sep="\t", row.names = 1, header=T)
 metadata_all <- tibble::rownames_to_column(metadata_all)
 names(metadata_all)[names(metadata_all) == "rowname"] <- "SampleID"
 
@@ -27,6 +27,7 @@ merge_otu_table_t$source <- as.factor(merge_otu_table_t$source)
 # Get the factor column name
 factor_column <- "experiment"
 Wilcox_df_final <- data.frame()
+KW_df_final <- data.frame()
 # Iterate through each factor variable
 factor_levels <- levels(merge_otu_table_t[[factor_column]])
 for (level in factor_levels) {
@@ -47,7 +48,7 @@ for (level in factor_levels) {
   colnames(Si8_FP001_Metadata)[1] <- "SampleID"
   Si8_FP001_Final <- rownames_to_column(Si8_FP001_Final1, var = "RowID")
   colnames(Si8_FP001_Final)[1] <- "SampleID"
-
+  
   filtered_df$source <- as.factor(filtered_df$source)
   factor_column2 <- "source"
   factor_levels2 <- levels(filtered_df[[factor_column2]])
@@ -73,7 +74,7 @@ for (level in factor_levels) {
     metadata <- gut_Metadata
     row.names(metadata) <- metadata$SampleID
     metadata <- metadata[, -1]
-    taxonomy <- read.csv("taxonomy.tsv", sep = "\t", row.names = 1)
+    taxonomy <- read.csv("selected_taxonomy.tsv", sep = "\t", row.names = 1)
     taxonomy <- as.matrix(taxonomy)
     # Read in metadata
     # Read in tree
@@ -101,41 +102,84 @@ for (level in factor_levels) {
       Group = character(2),
       row.names = c("Diet", "Sex")
     )
+    
+    kw_results <- data.frame(
+      experiment = character(),
+      source = character(),
+      statistics = numeric(),
+      p_val_cutoff = numeric(),
+      significance = character(),
+      stringsAsFactors = FALSE
+    )
+    #creare an empty df for krushkal-wallis results
+    
     erich <- estimate_richness(ps, measures = c("Observed", "Chao1", "Shannon"))
     erich_Status <- cbind(erich, metadata)
     write.table (erich_Status, file = "Richness_total.txt", sep = "\t")
+    
+    column_to_check <- "diet_sex"
+    unique_values_count <- erich_Status %>%
+      pull({{ column_to_check }}) %>%
+      n_distinct()
+    if (unique_values_count > 2) {
+      alpha_vals <- as.numeric(c(0.05, 0.01, 0.001))
+      # Create an empty list to store the results
+      result_list <- list()
+      # Loop through each value in alpha_vals
+      for (a_val in alpha_vals) {
+        # Run the command and store the result in the list
+        result <- as.data.frame(kruskalmc(erich_Status$Observed ~ erich_Status$diet_sex, probs = a_val, alpha = a_val))
+        result2 <- as.data.frame(kruskalmc(erich_Status$Shannon ~ erich_Status$diet_sex, probs = a_val, alpha = a_val))
+        # Add two more columns with the same values in all rows
+        result <- result %>%
+          mutate(experiment_value = level,
+                 source_value = level2,
+                 Alpha_Diversity_Mesure = "observed")
+        result2 <- result2 %>%
+          mutate(experiment_value = level,
+                 source_value = level2,
+                 Alpha_Diversity_Mesure = "Shannon")
+        # Append the result to the list
+        result_list[[length(result_list) + 1]] <- result
+        result_list[[length(result_list) + 1]] <- result2
+        }
+      # Combine all results into a single dataframe
+      final_result <- do.call(rbind, result_list)
+      }
+      
     column_to_check <- "diet"
     unique_values_count <- erich_Status %>%
-    pull({{ column_to_check }}) %>%
-    n_distinct()
-      
+      pull({{ column_to_check }}) %>%
+      n_distinct()
+    
     if (unique_values_count == 2){
       diet_Obs <- wilcox.test(erich_Status$Observed ~ erich_Status$diet, paired = FALSE, p.adjust.method="fdr", alternative = c("two.sided"), conf.level = 0.95)$p.value
       diet_Chao1 <- wilcox.test(erich_Status$Chao1 ~ erich_Status$diet, paired = FALSE, p.adjust.method="fdr", alternative = c("two.sided"), conf.level = 0.95)$p.value
       diet_Shannon <- wilcox.test(erich_Status$Shannon ~ erich_Status$diet, paired = FALSE, p.adjust.method="fdr", alternative = c("two.sided"), conf.level = 0.95)$p.value
       Wilcox_df[1, ] <- c(diet_Obs, diet_Chao1, diet_Shannon, paste(level, level2, sep = "_"))
-      } else {
+    } else {
       Wilcox_df[1, ] <- c(0, 0, 0, paste(level, level2, sep = "_"))
-      }
-      # Check if a column has more than 2 unique values
+    }
+    # Check if a column has more than 2 unique values
     column_to_check <- "sex"
     unique_values_count <- erich_Status %>%
-    pull({{ column_to_check }}) %>%
-    n_distinct()
-      
+      pull({{ column_to_check }}) %>%
+      n_distinct()
+    
     if (unique_values_count == 2){
       sex_Obs <- wilcox.test(erich_Status$Observed ~ erich_Status$sex, paired = FALSE, p.adjust.method="fdr", alternative = c("two.sided"), conf.level = 0.95)$p.value
       sex_Chao1 <- wilcox.test(erich_Status$Chao1 ~ erich_Status$sex, paired = FALSE, p.adjust.method="fdr", alternative = c("two.sided"), conf.level = 0.95)$p.value
       sex_Shannon <- wilcox.test(erich_Status$Shannon ~ erich_Status$sex, paired = FALSE, p.adjust.method="fdr", alternative = c("two.sided"), conf.level = 0.95)$p.value
       Wilcox_df[2, ] <- c(sex_Obs, sex_Chao1, sex_Shannon, paste(level, level2, sep = "_"))
-      }else{
+    }else{
       Wilcox_df[2, ] <- c(0, 0, 0, paste(level, level2, sep = "_"))
-      }
-      #file_name <- paste(level, level2, "_Diet_Sex_Wilcox_Test.txt", sep = "_")
-      #write.table (Wilcox_df, file = file_name, sep = "\t", row.names = TRUE, col.names = NA)
-      Wilcox_df_final  <- bind_rows(Wilcox_df, Wilcox_df_final)
     }
+    #file_name <- paste(level, level2, "_Diet_Sex_Wilcox_Test.txt", sep = "_")
+    #write.table (Wilcox_df, file = file_name, sep = "\t", row.names = TRUE, col.names = NA)
+    Wilcox_df_final  <- bind_rows(Wilcox_df, Wilcox_df_final)
+    KW_df_final  <- bind_rows(final_result, KW_df_final)
+  }
 }
 
 write.table (Wilcox_df_final, file = "Experiment_Wise_Wilcox_test.txt", sep = "\t", row.names = TRUE, col.names = NA)
-
+write.table (KW_df_final, file = "Experiment_Wise_KW_test.txt", sep = "\t", row.names = TRUE, col.names = NA)
