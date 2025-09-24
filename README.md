@@ -1,3 +1,6 @@
+
+<img width="1024" height="1024" alt="ChatGPT Image Sep 24, 2025, 12_33_34 PM" src="https://github.com/user-attachments/assets/448a7ea2-c27a-4239-9aa9-88f5f9441402" />
+
 # AMP_Study_FPB_16S_Analysis
 For 16S gut bacterial analysis, samples were collected from both the intestinal contents (luminal samples) and the gut lining (mucosal samples), which were thoroughly washed to remove residual material. All samples were rapidly frozen and stored until DNA extraction. Genomic DNA was isolated from both luminal and mucosal samples {removed detailed extraction method}.
 
